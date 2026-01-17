@@ -86,9 +86,18 @@ class OFDM:
         # use komm open-source library for QAM mod/demod 
         # pypi.org/project/komm 
         # by Roberto W. Nobrega <rwnobrega@gmail.com>
-        self.qam = komm.QAModulation(2**self.mQAM,base_amplitudes=1./self.norm)
-        
+        self.constellation = komm.QAMConstellation(2**self.mQAM, deltas=1./self.norm)  # 16 symbols
+        self.labeling = komm.ReflectedRectangularLabeling(self.mQAM)  # 4 bits per symbol
+
         self.kstart = (8*self.nData//self.mQAM+self.pilotIndices.size)//2
+
+    def modulate(self, bits):
+        indices = self.labeling.bits_to_indices(bits)
+        return self.constellation.indices_to_symbols(indices)
+
+    def demodulate_hard(self, received):
+        indices_hat = self.constellation.closest_indices(received)
+        return self.labeling.indices_to_bits(indices_hat)
 
     def encode(self,data,randomSeed = 1):
             
@@ -109,7 +118,7 @@ class OFDM:
         rints = np.uint8(rng.integers(256,size=self.nData))
         data = data ^ rints
         bin_data = np.unpackbits(data).flatten()
-        tx_data = self.qam.modulate(bin_data)
+        tx_data = self.modulate(bin_data)
       
         # create an empty spectrum with all complex frequency values set to zero
         self.spectrum = np.zeros(self.nIFFT,dtype=complex)
@@ -191,7 +200,7 @@ class OFDM:
                 imPilots += np.imag(rx_freqs[k])**2 
                 ipilot+=1  
                 
-        rx_bin = self.qam.demodulate_hard(rx_data)
+        rx_bin = self.demodulate_hard(rx_data)
        
         # now let's assemble the bits into into bytes
         rx_byte = np.packbits(rx_bin)
